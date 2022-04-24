@@ -10,13 +10,60 @@ from models.utils import save_image
 from utils.editing_utils import edit_target_attribute
 
 
-def dialog_with_real_user(field_model,
+def gen_simulated_query(src_label, tgt_label):
+    src_label = [src_label["Bangs"],
+                 src_label["Eyeglasses"],
+                 src_label["No_Beard"],
+                 src_label["Smiling"],
+                 src_label["Young"]]
+    labels = ['bangs', "eyeglasses", "beard", "smiling", "young"]
+    target_num = 0
+    score = 0
+    for src, tgt, l in zip(src_label, tgt_label, labels):
+        if abs(tgt - src) > abs(target_num):
+            target_num = tgt - src
+            target_label = l
+        score += abs(tgt - src)
+    if target_num == 0:
+        outputs = 'That\'s all'
+    else:
+        if target_label == 'bangs':
+            if target_num > 0:
+                outputs = 'make the bangs longer'
+            else:
+                outputs = 'make the bangs shorter'
+        elif target_label == 'eyeglasses':
+            if target_num > 0:
+                outputs = 'add eyeglasses'
+            else:
+                outputs = 'remove eyeglasses'
+        elif target_label == 'beard':
+            if target_num > 0:
+                outputs = 'add more beard'
+            else:
+                outputs = 'remove some beard'
+        elif target_label == 'smiling':
+            if target_num > 0:
+                outputs = 'add more smiling'
+            else:
+                outputs = 'less smiling'
+        elif target_label == 'young':
+            if target_num > 0:
+                outputs = 'make it older'
+            else:
+                outputs = 'make it younger'
+    return outputs, score / 5
+
+
+def dialog_with_simulator(field_model,
+                          tgt_latent_code,
+                          tgt_label,
+                          tgt_score,
                           latent_code,
                           opt,
                           args,
                           dialog_logger,
                           display_img=False):
-
     # initialize dialog recorder
     state_log = ['start']
     edit_log = []
@@ -35,7 +82,163 @@ def dialog_with_real_user(field_model,
 
     with torch.no_grad():
         start_image, start_label, start_score = \
-            field_model.synthesize_and_predict(torch.from_numpy(latent_code).to(torch.device('cuda'))) # noqa
+            field_model.synthesize_and_predict(torch.from_numpy(latent_code).to(torch.device('cuda')))  # noqa
+
+    save_image(start_image, f'{opt["path"]["visualization"]}/start_image.png')
+
+    if display_img:
+        plt.figure()
+        plt.imshow(
+            mpimg.imread(f'{opt["path"]["visualization"]}/start_image.png'))
+        plt.axis('off')
+        plt.show()
+
+    # initialize attribtue_dict
+    attribute_dict = {
+        "Bangs": start_label[0],
+        "Eyeglasses": start_label[1],
+        "No_Beard": start_label[2],
+        "Smiling": start_label[3],
+        "Young": start_label[4],
+    }
+    dialog_logger.info('START IMAGE  >>> ' + str(attribute_dict))
+
+    for _ in range(3):
+
+        dialog_logger.info('\n---------------------------------------- Edit ' +
+                           str(round_idx) +
+                           '----------------------------------------\n')
+
+        # -------------------- TAKE USER INPUT --------------------
+        user_query, score = gen_simulated_query(attribute_dict, tgt_label)
+        feat_distance = ((latent_code - tgt_latent_code) ** 2).mean()
+        dialog_logger.info('Feature Distance:' + str(feat_distance.item()))
+        dialog_logger.info('Score Distance:' + str(score))
+        # understand user input
+        user_labels = encode_request(
+            args,
+            system_mode=system_log[-1]['system_mode'],
+            dialog_logger=dialog_logger,
+            input_request=user_query)
+        text_image_log.append('USER:   ' + user_labels['text'])
+
+        # update not_used_attribute
+        if user_labels['attribute'] in not_used_attribute:
+            not_used_attribute.remove(user_labels['attribute'])
+
+        # #################### DECIDE STATE ####################
+        state = decide_next_state(
+            state=state_log[-1],
+            system_mode=system_log[-1]['system_mode'],
+            user_mode=user_labels['user_mode'])
+
+        if state == 'end':
+            user_log.append(user_labels)
+            state_log.append(state)
+            text_log.append('USER:   ' + user_labels['text'])
+            break
+
+        # #################### DECIDE EDIT ####################
+        edit_labels = decide_next_edit(
+            edit_log=edit_log,
+            system_labels=system_log[-1],
+            user_labels=user_labels,
+            state=state,
+            attribute_dict=attribute_dict,
+            dialog_logger=dialog_logger)
+
+        text_image_log.append(edit_labels)
+
+        attribute_dict, exception_mode, latent_code, edited_latent_code = edit_target_attribute(  # noqa
+            opt,
+            attribute_dict,
+            edit_labels,
+            round_idx,
+            latent_code,
+            edited_latent_code,
+            field_model,
+            display_img=display_img)
+        if state == 'no_edit':
+            dialog_logger.info('NO EDIT  >>> ' + str(attribute_dict))
+        else:
+            dialog_logger.info('UPDATED IMAGE >>> ' + str(attribute_dict))
+        text_image_log.append(attribute_dict.copy())
+
+        # #################### DECIDE SYSTEM ####################
+        # decide system feedback hard labels
+        temp_system_labels = decide_next_feedback(
+            system_labels=system_log[-1],
+            user_labels=user_labels,
+            state=state,
+            edit_labels=edit_labels,
+            not_used_attribute=not_used_attribute,
+            round_idx=round_idx,
+            exception_mode=exception_mode)
+
+        # instantiate feedback
+        system_labels = instantiate_feedback(
+            args,
+            system_mode=temp_system_labels['system_mode'],
+            attribute=temp_system_labels['attribute'],
+            exception_mode=exception_mode)
+
+        dialog_logger.info('SYSTEM FEEDBACK >>> ' + system_labels['text'])
+
+        # update not_used_attribute
+        if system_labels['attribute'] in not_used_attribute:
+            not_used_attribute.remove(system_labels['attribute'])
+
+        # -------------------- UPDATE LOG --------------------
+        state_log.append(state)
+        edit_log.append(edit_labels)
+        system_log.append(system_labels)
+        user_log.append(user_labels)
+        text_log.append('USER:   ' + user_labels['text'])
+        text_log.append('SYSTEM: ' + system_labels['text'])
+        text_log.append('')
+        text_image_log.append('SYSTEM: ' + system_labels['text'])
+        text_image_log.append('')
+
+        round_idx += 1
+
+    dialog_overall_log = {
+        'state_log': state_log,
+        'edit_log': edit_log,
+        'system_log': system_log,
+        'user_log': user_log,
+        'text_log': text_log,
+        'text_image_log': text_image_log
+    }
+    dialog_logger.info('Dialog successfully ended.')
+
+    return dialog_overall_log
+
+
+def dialog_with_real_user(field_model,
+                          latent_code,
+                          opt,
+                          args,
+                          dialog_logger,
+                          display_img=False):
+    # initialize dialog recorder
+    state_log = ['start']
+    edit_log = []
+    system_log = [{"text": None, "system_mode": 'start', "attribute": None}]
+    user_log = []
+    not_used_attribute = [
+        'Bangs', "Eyeglasses", "No_Beard", "Smiling", "Young"
+    ]
+    text_log = []
+    text_image_log = []
+
+    # initialize first round's variables
+    round_idx = 0
+
+    edited_latent_code = None
+
+    with torch.no_grad():
+        start_image, start_label, start_score = \
+            field_model.synthesize_and_predict(torch.from_numpy(latent_code).to(torch.device('cuda')))  # noqa
 
     save_image(start_image, f'{opt["path"]["visualization"]}/start_image.png')
 
@@ -279,8 +482,7 @@ def decide_next_edit(edit_log, system_labels, user_labels, state,
             assert score_change_value is None
             score_change_value = 1
 
-    elif system_labels['system_mode'] == 'whether_enough' and user_labels[
-            'user_mode'] == 'no':
+    elif system_labels['system_mode'] == 'whether_enough' and user_labels['user_mode'] == 'no':
         # continue the previous edit
         assert state == 'edit'
         attribute = edit_labels['attribute']
@@ -288,8 +490,7 @@ def decide_next_edit(edit_log, system_labels, user_labels, state,
         score_change_value = 1
         target_score = None
 
-    elif system_labels['system_mode'] == 'suggestion' and user_labels[
-            'user_mode'] == 'yes':
+    elif system_labels['system_mode'] == 'suggestion' and user_labels['user_mode'] == 'yes':
         # play with the suggested attribute, random direction
         # (small degree --> positive direction)
         assert state == 'edit'
@@ -312,8 +513,7 @@ def decide_next_edit(edit_log, system_labels, user_labels, state,
         target_score = None
 
     # --- The code below is moderation mechanism for language encoder ---
-    if system_labels['system_mode'] == 'suggestion' and user_labels[
-            'user_mode'] == 'yes':
+    if system_labels['system_mode'] == 'suggestion' and user_labels['user_mode'] == 'yes':
         attribute = system_labels['attribute']
 
     # ---------- Fill in all the values in edit_labels ----------
@@ -377,7 +577,7 @@ def decide_next_feedback(system_labels, user_labels, state, edit_labels,
         feedback_attribute = None
 
         if system_labels['system_mode'] == 'suggestion' and user_labels[
-                'user_mode'] == 'yes':
+            'user_mode'] == 'yes':
             assert state == 'edit'
             system_mode = 'whether_enough'
             feedback_attribute = system_labels['attribute']

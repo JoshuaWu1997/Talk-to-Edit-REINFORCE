@@ -58,13 +58,11 @@ def parse_args():
 
 
 def main():
-
     args = parse_args()
     encode_request(args)
 
 
-def encode_request(args, system_mode=None, dialog_logger=None):
-
+def encode_request(args, system_mode=None, dialog_logger=None, input_request=None):
     # set up
     if args.device_name == 'cpu':
         args.device = torch.device('cpu')
@@ -99,12 +97,12 @@ def encode_request(args, system_mode=None, dialog_logger=None):
         assert system_mode is not None
 
     # input request
-    if True:
-        compulsory_output_function(
-            'Enter your request (Press enter when you finish):')
+    if input_request is None:
+        compulsory_output_function('Enter your request (Press enter when you finish):')
         input_text = input()
     else:
-        input_text = 'make the bangs slightly longer.'
+        input_text = input_request
+        # input_text = 'make the bangs slightly longer.'
     compulsory_output_function('USER INPUT >>> ' + input_text)
 
     # ---------------- STEP 2: Preprocess Request ----------------
