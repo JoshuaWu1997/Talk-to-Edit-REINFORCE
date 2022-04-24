@@ -3,7 +3,7 @@
 ![Python 3.7](https://img.shields.io/badge/python-3.7-green.svg?style=plastic)
 ![pytorch 1.6.0](https://img.shields.io/badge/pytorch-1.6.0-green.svg?style=plastic)
 
-This repository contains the implementation of the following paper:
+This repository is a reinforcement learning based extension of this paper:
 > **Talk-to-Edit: Fine-Grained Facial Editing via Dialog**<br>
 > Yuming Jiang<sup>∗</sup>, Ziqi Huang<sup>∗</sup>, Xingang Pan, Chen Change Loy, Ziwei Liu<br>
 > IEEE International Conference on Computer Vision (**ICCV**), 2021<br>
@@ -15,9 +15,9 @@ This repository contains the implementation of the following paper:
 [[Video](https://www.youtube.com/watch?v=ZKMkQhkMXPI)]
 
 You can try our colab demo here. Enjoy!
-1. Editing with dialog: <a href="https://colab.research.google.com/drive/14inhJjrNIj_SdhIA7NEtGS2kKOWXXSjb?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="google colab logo"></a>
-1. Editing without dialog: <a href="https://colab.research.google.com/drive/1mO5NmlPi4YV359cPkLZnOpG_kShQi_hN?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="google colab logo"></a>
+1. Editing with simulator: <a href="https://colab.research.google.com/drive/1YfUQVqAf3XD3EECCwuiScVP_TJU9QBih?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="google colab logo"></a>
 
+The following instructions are from the original repository <a href="https://https://github.com/yumingj/talk-to-edit"> Talk-to-edit </a>
 ## Overview
 ![overall_structure](./assets/teaser.png)
 
