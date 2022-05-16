@@ -23,14 +23,18 @@ class EditTracker(torch.nn.Module):
         self.log_std = nn.Linear(512, 512)
         self.criterion = torch.nn.MSELoss()
 
-    def forward(self, x, state):
+    def forward(self, x, state, train=True):
         output, state_ = self.lstm(x, state)
         mean = self.mean(output)
-        log_std = self.log_std(output)
-        log_std = torch.clamp(log_std, min=-2, max=20)
-        std = log_std.exp()
-        output = mean + torch.randn_like(mean) * std
-        log_prob = -log_std - ((output - mean) ** 2) / (std ** 2) / 2
+        if train:
+            log_std = self.log_std(output)
+            log_std = torch.clamp(log_std, min=-2, max=20)
+            std = log_std.exp()
+            output = mean + torch.randn_like(mean) * std
+            log_prob = -log_std - ((output - mean) ** 2) / (std ** 2) / 2
+        else:
+            output = mean
+            log_prob = None
         return output, state_, log_prob
 
     def supervised_loss(self, latent, tgt_latent):
@@ -100,6 +104,7 @@ def dialog_with_simulator(field_model,
                           opt,
                           args,
                           dialog_logger,
+                          policy=None,
                           display_img=False):
     # initialize dialog recorder
     state_log = ['start']
@@ -140,7 +145,7 @@ def dialog_with_simulator(field_model,
     }
     dialog_logger.info('START IMAGE  >>> ' + str(attribute_dict))
 
-    feat_distances, score_distances = [], []
+    feat_distances, score_distances, states = [], [], None
     for _ in range(3):
 
         dialog_logger.info('\n---------------------------------------- Edit ' +
@@ -189,7 +194,7 @@ def dialog_with_simulator(field_model,
 
         text_image_log.append(edit_labels)
 
-        attribute_dict, exception_mode, latent_code, edited_latent_code = edit_target_attribute(  # noqa
+        attribute_dict, exception_mode, latent_code_new, edited_latent_code = edit_target_attribute(  # noqa
             opt,
             attribute_dict,
             edit_labels,
@@ -203,6 +208,17 @@ def dialog_with_simulator(field_model,
         else:
             dialog_logger.info('UPDATED IMAGE >>> ' + str(attribute_dict))
         text_image_log.append(attribute_dict.copy())
+
+        # #################### POLICY ####################
+        if policy is not None:
+            with torch.no_grad():
+                edit_code, states, log_prob = policy(
+                    torch.from_numpy(latent_code_new - latent_code).unsqueeze(0).to(torch.device('cuda')),
+                    states, train=False)
+                latent_code = torch.from_numpy(latent_code).to(torch.device('cuda')) + edit_code[0] / 20
+                latent_code = latent_code.detach().cpu().numpy()
+        else:
+            latent_code = latent_code_new
 
         # #################### DECIDE SYSTEM ####################
         # decide system feedback hard labels
@@ -238,6 +254,12 @@ def dialog_with_simulator(field_model,
         text_log.append('')
         text_image_log.append('SYSTEM: ' + system_labels['text'])
         text_image_log.append('')
+
+        # -------------------- UPDATE Metric --------------------
+        user_query, score = gen_simulated_query(attribute_dict, tgt_label)
+        feat_distance = ((latent_code - tgt_latent_code) ** 2).mean()
+        feat_distances.append(feat_distance)
+        score_distances.append(score)
 
         round_idx += 1
 
