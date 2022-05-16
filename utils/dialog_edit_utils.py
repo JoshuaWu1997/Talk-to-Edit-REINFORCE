@@ -3,11 +3,48 @@ import random
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import torch
+import torch.nn as nn
 from language.generate_feedback import instantiate_feedback
 from language.run_encoder import encode_request
 from models.utils import save_image
 
 from utils.editing_utils import edit_target_attribute
+
+
+class EditTracker(torch.nn.Module):
+    """
+    gaussian policy
+    """
+
+    def __init__(self):
+        super(EditTracker, self).__init__()
+        self.lstm = nn.LSTM(input_size=512, hidden_size=512, num_layers=2, batch_first=True)
+        self.mean = nn.Linear(512, 512)
+        self.log_std = nn.Linear(512, 512)
+        self.criterion = torch.nn.MSELoss()
+
+    def forward(self, x, state):
+        output, state_ = self.lstm(x, state)
+        mean = self.mean(output)
+        log_std = self.log_std(output)
+        log_std = torch.clamp(log_std, min=-2, max=20)
+        std = log_std.exp()
+        output = mean + torch.randn_like(mean) * std
+        log_prob = -log_std - ((output - mean) ** 2) / (std ** 2) / 2
+        return output, state_, log_prob
+
+    def supervised_loss(self, latent, tgt_latent):
+        return self.criterion(latent, tgt_latent)
+
+    def reinforce_loss(self, logProb_seq, featDist_seq):
+        loss = 0.
+        rewards = [i - j for i, j in zip(featDist_seq[:-1], featDist_seq[1:])]
+        # exp_rewards = [0.]
+        # for r in rewards[::-1]:
+        #     exp_rewards.append(exp_rewards[-1] * 0.9 + r)
+        for log_prob, exp_reward in zip(logProb_seq, rewards):
+            loss = loss - log_prob * exp_reward
+        return loss
 
 
 def gen_simulated_query(src_label, tgt_label):
@@ -103,6 +140,7 @@ def dialog_with_simulator(field_model,
     }
     dialog_logger.info('START IMAGE  >>> ' + str(attribute_dict))
 
+    feat_distances, score_distances = [], []
     for _ in range(3):
 
         dialog_logger.info('\n---------------------------------------- Edit ' +
@@ -114,6 +152,8 @@ def dialog_with_simulator(field_model,
         feat_distance = ((latent_code - tgt_latent_code) ** 2).mean()
         dialog_logger.info('Feature Distance:' + str(feat_distance.item()))
         dialog_logger.info('Score Distance:' + str(score))
+        feat_distances.append(feat_distance)
+        score_distances.append(score)
         # understand user input
         user_labels = encode_request(
             args,
@@ -209,9 +249,171 @@ def dialog_with_simulator(field_model,
         'text_log': text_log,
         'text_image_log': text_image_log
     }
+    if len(feat_distances) < 3:
+        feat_distances = feat_distances + [feat_distances[-1]] * (3 - len(feat_distances))
+        score_distances = score_distances + [score_distances[-1]] * (3 - len(score_distances))
     dialog_logger.info('Dialog successfully ended.')
 
-    return dialog_overall_log
+    return dialog_overall_log, feat_distances, score_distances
+
+
+def train_with_simulator(field_model,
+                         policy,
+                         tgt_latent_code,
+                         tgt_label,
+                         tgt_score,
+                         latent_code,
+                         opt,
+                         args,
+                         dialog_logger,
+                         display_img=False):
+    # initialize dialog recorder
+    state_log = ['start']
+    edit_log = []
+    system_log = [{"text": None, "system_mode": 'start', "attribute": None}]
+    user_log = []
+    not_used_attribute = [
+        'Bangs', "Eyeglasses", "No_Beard", "Smiling", "Young"
+    ]
+    text_log = []
+    text_image_log = []
+
+    # initialize first round's variables
+    round_idx = 0
+
+    edited_latent_code = None
+
+    with torch.no_grad():
+        start_image, start_label, start_score = \
+            field_model.synthesize_and_predict(torch.from_numpy(latent_code).to(torch.device('cuda')))  # noqa
+
+    # initialize attribtue_dict
+    attribute_dict = {
+        "Bangs": start_label[0],
+        "Eyeglasses": start_label[1],
+        "No_Beard": start_label[2],
+        "Smiling": start_label[3],
+        "Young": start_label[4],
+    }
+
+    state = torch.from_numpy(latent_code).to(torch.device('cuda'))
+    loss, log_probs, feat_dists, states = 0., [], [], None
+    feat_distances, score_distances = [], []
+    feat_dists.append((state - torch.from_numpy(tgt_latent_code).to(torch.device('cuda'))) ** 2)
+    for _ in range(3):
+        # -------------------- TAKE USER INPUT --------------------
+        user_query, score = gen_simulated_query(attribute_dict, tgt_label)
+        # understand user input
+        user_labels = encode_request(
+            args,
+            system_mode=system_log[-1]['system_mode'],
+            dialog_logger=dialog_logger,
+            input_request=user_query)
+        text_image_log.append('USER:   ' + user_labels['text'])
+
+        # update not_used_attribute
+        if user_labels['attribute'] in not_used_attribute:
+            not_used_attribute.remove(user_labels['attribute'])
+
+        # #################### DECIDE STATE ####################
+        state = decide_next_state(
+            state=state_log[-1],
+            system_mode=system_log[-1]['system_mode'],
+            user_mode=user_labels['user_mode'])
+
+        if state == 'end':
+            user_log.append(user_labels)
+            state_log.append(state)
+            text_log.append('USER:   ' + user_labels['text'])
+            break
+
+        # #################### DECIDE EDIT ####################
+        edit_labels = decide_next_edit(
+            edit_log=edit_log,
+            system_labels=system_log[-1],
+            user_labels=user_labels,
+            state=state,
+            attribute_dict=attribute_dict,
+            dialog_logger=dialog_logger)
+
+        text_image_log.append(edit_labels)
+
+        attribute_dict, exception_mode, latent_code_new, edited_latent_code = edit_target_attribute(  # noqa
+            opt,
+            attribute_dict,
+            edit_labels,
+            round_idx,
+            latent_code,
+            edited_latent_code,
+            field_model,
+            display_img=display_img)
+        text_image_log.append(attribute_dict.copy())
+
+        # #################### POLICY ####################
+        edit_code, states, log_prob = policy(
+            torch.from_numpy(latent_code_new - latent_code).unsqueeze(0).to(torch.device('cuda')), states)
+        latent_code = torch.from_numpy(latent_code).to(torch.device('cuda')) + edit_code[0] / 20
+        log_probs.append(log_prob)
+        tgt_latent = torch.from_numpy(tgt_latent_code).to(torch.device('cuda'))
+        feat_dists.append((latent_code.detach().clone() - tgt_latent) ** 2)
+        loss = loss + policy.supervised_loss(latent_code, tgt_latent)
+        latent_code = latent_code.detach().cpu().numpy()
+
+        # #################### DECIDE SYSTEM ####################
+        # decide system feedback hard labels
+        temp_system_labels = decide_next_feedback(
+            system_labels=system_log[-1],
+            user_labels=user_labels,
+            state=state,
+            edit_labels=edit_labels,
+            not_used_attribute=not_used_attribute,
+            round_idx=round_idx,
+            exception_mode=exception_mode)
+
+        # instantiate feedback
+        system_labels = instantiate_feedback(
+            args,
+            system_mode=temp_system_labels['system_mode'],
+            attribute=temp_system_labels['attribute'],
+            exception_mode=exception_mode)
+
+        # update not_used_attribute
+        if system_labels['attribute'] in not_used_attribute:
+            not_used_attribute.remove(system_labels['attribute'])
+
+        # -------------------- UPDATE LOG --------------------
+        state_log.append(state)
+        edit_log.append(edit_labels)
+        system_log.append(system_labels)
+        user_log.append(user_labels)
+        text_log.append('USER:   ' + user_labels['text'])
+        text_log.append('SYSTEM: ' + system_labels['text'])
+        text_log.append('')
+        text_image_log.append('SYSTEM: ' + system_labels['text'])
+        text_image_log.append('')
+
+        # -------------------- UPDATE Metric --------------------
+        user_query, score = gen_simulated_query(attribute_dict, tgt_label)
+        feat_distance = ((latent_code - tgt_latent_code) ** 2).mean()
+        feat_distances.append(feat_distance)
+        score_distances.append(score)
+
+        round_idx += 1
+
+    dialog_overall_log = {
+        'state_log': state_log,
+        'edit_log': edit_log,
+        'system_log': system_log,
+        'user_log': user_log,
+        'text_log': text_log,
+        'text_image_log': text_image_log
+    }
+    if len(feat_distances) < 3:
+        feat_distances = feat_distances + [feat_distances[-1]] * (3 - len(feat_distances))
+        score_distances = score_distances + [score_distances[-1]] * (3 - len(score_distances))
+    dialog_logger.info('Dialog successfully ended.')
+
+    return dialog_overall_log, feat_distances, score_distances, loss, feat_dists, log_probs
 
 
 def dialog_with_real_user(field_model,

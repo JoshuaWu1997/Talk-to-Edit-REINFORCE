@@ -186,10 +186,10 @@ class BaseModel():
 
         if self.opt['lr_decay'] == 'step':
             lr = self.opt['lr'] * (
-                self.opt['gamma']**(epoch // self.opt['step']))
+                    self.opt['gamma'] ** (epoch // self.opt['step']))
         elif self.opt['lr_decay'] == 'cos':
             lr = self.opt['lr'] * (
-                1 + math.cos(math.pi * epoch / self.opt['num_epochs'])) / 2
+                    1 + math.cos(math.pi * epoch / self.opt['num_epochs'])) / 2
         elif self.opt['lr_decay'] == 'linear':
             lr = self.opt['lr'] * (1 - epoch / self.opt['num_epochs'])
         elif self.opt['lr_decay'] == 'linear2exp':
@@ -197,7 +197,7 @@ class BaseModel():
                 # learning rate decay as 95%
                 # at the turning point (1 / 95% = 1.0526)
                 lr = self.opt['lr'] * (
-                    1 - epoch / int(self.opt['turning_point'] * 1.0526))
+                        1 - epoch / int(self.opt['turning_point'] * 1.0526))
             else:
                 lr *= self.opt['gamma']
         elif self.opt['lr_decay'] == 'schedule':
@@ -277,7 +277,8 @@ class BaseModel():
         concat_images = cv2.hconcat([original_image[0], edited_image[0]])
         save_image(
             concat_images,
-            f'{save_dir}/{batch_idx:03d}_epoch_{epoch:03d}_{self.opt["exp_name"]}_original_{self.original_label[0][self.target_attr_idx]}_edited_{edited_label[self.target_attr_idx]}.png',  # noqa
+            f'{save_dir}/{batch_idx:03d}_epoch_{epoch:03d}_{self.opt["exp_name"]}_original_{self.original_label[0][self.target_attr_idx]}_edited_{edited_label[self.target_attr_idx]}.png',
+            # noqa
             need_post_process=False)
 
         self.field_function.train()
@@ -288,7 +289,7 @@ class BaseModel():
         for sample_id in range(total_num):
             sample_latent_code = torch.from_numpy(
                 latent_codes[sample_id:sample_id + 1]).to(
-                    torch.device('cuda'))
+                torch.device('cuda'))
 
             if self.latent_code_is_w_space and self.transform_z_to_w:
                 # translate original z space latent code to w space
@@ -355,7 +356,7 @@ class BaseModel():
                         sample_latent_code = edited_dict['edited_latent_code']
 
                     edited_image, edited_label, edited_score = \
-                        self.synthesize_and_predict(edited_dict['edited_latent_code']) # noqa
+                        self.synthesize_and_predict(edited_dict['edited_latent_code'])  # noqa
 
                 target_attr_label = edited_label[self.target_attr_idx]
                 target_attr_score = edited_score[self.target_attr_idx]
@@ -378,7 +379,7 @@ class BaseModel():
                             saved_image = current_stage_images_list[max_index]
                             saved_label = current_stage_labels_list[max_index]
                             saved_score = current_stage_scores_list[max_index]
-                            save_name = f'{sample_id:03d}_num_edits_{num_edits-1}_class_{previous_target_attr_label}.png'  # noqa
+                            save_name = f'{sample_id:03d}_num_edits_{num_edits - 1}_class_{previous_target_attr_label}.png'  # noqa
                             save_image(saved_image, f'{save_dir}/{save_name}')
                             editing_logger.info(
                                 f'{save_name}: {saved_label}, {saved_score}')
@@ -432,10 +433,7 @@ class BaseModel():
         total_num = latent_codes.shape[0]
 
         for sample_id in range(total_num):
-
-            sample_latent_code = torch.from_numpy(
-                latent_codes[sample_id:sample_id + 1]).to(
-                    torch.device('cuda'))
+            sample_latent_code = torch.from_numpy(latent_codes[sample_id:sample_id + 1]).to(torch.device('cuda'))
             start_latent_codes = sample_latent_code
             start_edited_latent_code = edited_latent_code
 
@@ -446,16 +444,12 @@ class BaseModel():
                 if self.latent_code_is_w_space and self.transform_z_to_w:
                     # translate original z space latent code to w space
                     with torch.no_grad():
-                        sample_latent_code = self.stylegan_gen.get_latent(
-                            sample_latent_code)
-
+                        sample_latent_code = self.stylegan_gen.get_latent(sample_latent_code)
                 with torch.no_grad():
-                    original_image, start_label, start_score = \
-                        self.synthesize_and_predict(sample_latent_code)
+                    original_image, start_label, start_score = self.synthesize_and_predict(sample_latent_code)
             else:
                 with torch.no_grad():
-                    original_image, start_label, start_score = \
-                        self.synthesize_and_predict(edited_latent_code)
+                    original_image, start_label, start_score = self.synthesize_and_predict(edited_latent_code)
 
             target_attr_label = int(start_label[self.target_attr_idx])
             target_score = start_score[self.target_attr_idx]
@@ -467,16 +461,13 @@ class BaseModel():
             # skip images with low confidence
             if target_score < self.opt['confidence_thresh']:
                 if editing_logger:
-                    editing_logger.info(
-                        f'Sample {sample_id:03d} is not confident, skip.')
+                    editing_logger.info(f'Sample {sample_id:03d} is not confident, skip.')
                 continue
 
             # skip images that are already the target class num
             if target_attr_label == target_cls:
                 if editing_logger:
-                    editing_logger.info(
-                        f'Sample {sample_id:03d} is already at the target class, skip.'
-                    )
+                    editing_logger.info(f'Sample {sample_id:03d} is already at the target class, skip.')
                 # return the exactly the input image and input latent codes
                 saved_label = start_label
                 saved_latent_code = start_latent_codes
@@ -509,35 +500,31 @@ class BaseModel():
 
             if self.fix_layers:
                 if edited_latent_code is None:
-                    edited_latent_code = sample_latent_code.unsqueeze(
-                        1).repeat(1, self.w_space_channel_num, 1)
+                    edited_latent_code = sample_latent_code.unsqueeze(1).repeat(1, self.w_space_channel_num, 1)
 
             while ((direction == 'positive') and
                    (target_attr_label <= target_cls) and
                    (target_attr_label < self.opt['max_cls_num'])) or (
-                       (direction == 'negative') and
-                       (target_attr_label >= target_cls) and
-                       (target_attr_label > self.opt['min_cls_num'])):
+                    (direction == 'negative') and
+                    (target_attr_label >= target_cls) and
+                    (target_attr_label > self.opt['min_cls_num'])):
                 num_trials += 1
                 with torch.no_grad():
                     # modify sampled latent code
                     if self.fix_layers:
                         # for fix layers, the input to the field_function is w
                         # space, but the input to the stylegan is w plus space
-                        edited_dict = self.modify_latent_code_bidirection(
-                            sample_latent_code, edited_latent_code, alpha)
-                        sample_latent_code = sample_latent_code + alpha * edited_dict[
-                            'field']
+                        edited_dict = self.modify_latent_code_bidirection(sample_latent_code, edited_latent_code, alpha)
+                        sample_latent_code = sample_latent_code + alpha * edited_dict['field']
                         edited_latent_code = edited_dict['edited_latent_code']
                     else:
                         # for other modes, the input to the field function and
                         # stylegan are same (both w space or z space)
-                        edited_dict = self.modify_latent_code_bidirection(
-                            latent_code_w=sample_latent_code, alpha=1)
+                        edited_dict = self.modify_latent_code_bidirection(latent_code_w=sample_latent_code, alpha=1)
                         sample_latent_code = edited_dict['edited_latent_code']
 
                     edited_image, edited_label, edited_score = \
-                        self.synthesize_and_predict(edited_dict['edited_latent_code']) # noqa
+                        self.synthesize_and_predict(edited_dict['edited_latent_code'])  # noqa
 
                 target_attr_label = edited_label[self.target_attr_idx]
                 target_attr_score = edited_score[self.target_attr_idx]
@@ -550,7 +537,7 @@ class BaseModel():
                         saved_label = edited_label
                         saved_latent_code = sample_latent_code
                         saved_editing_latent_code = edited_latent_code
-                        save_name = f'{prefix}_{sample_id:03d}_num_edits_{num_edits+1}_class_{target_attr_label}_attr_idx_{self.target_attr_idx}.png'  # noqa
+                        save_name = f'{prefix}_{sample_id:03d}_num_edits_{num_edits + 1}_class_{target_attr_label}_attr_idx_{self.target_attr_idx}.png'  # noqa
                         saved_image = edited_image
                         saved_score = edited_score
                         save_image(saved_image, f'{save_dir}/{save_name}')
@@ -573,33 +560,24 @@ class BaseModel():
                         current_stage_images_list.append(edited_image)
                         current_stage_labels_list.append(edited_label)
                         current_stage_scores_list.append(edited_score)
-                        current_stage_target_scores_list.append(
-                            target_attr_score)
-                        current_stage_latent_code_list.append(
-                            sample_latent_code)
-                        current_stage_editing_latent_code_list.append(
-                            edited_latent_code)
+                        current_stage_target_scores_list.append(target_attr_score)
+                        current_stage_latent_code_list.append(sample_latent_code)
+                        current_stage_editing_latent_code_list.append(edited_latent_code)
                     else:
                         if num_edits > 1:
                             # save images for previous stage
                             max_value = max(current_stage_target_scores_list)
-                            max_index = current_stage_target_scores_list.index(
-                                max_value)
+                            max_index = current_stage_target_scores_list.index(max_value)
                             saved_image = current_stage_images_list[max_index]
                             saved_label = current_stage_labels_list[max_index]
                             saved_score = current_stage_scores_list[max_index]
-                            saved_latent_code = current_stage_latent_code_list[
-                                max_index]
-                            saved_editing_latent_code = current_stage_editing_latent_code_list[
-                                max_index]
-                            save_name = f'{prefix}_{sample_id:03d}_num_edits_{num_edits-1}_class_{previous_target_attr_label}_attr_idx_{self.target_attr_idx}.png'  # noqa
+                            saved_latent_code = current_stage_latent_code_list[max_index]
+                            saved_editing_latent_code = current_stage_editing_latent_code_list[max_index]
+                            save_name = f'{prefix}_{sample_id:03d}_num_edits_{num_edits - 1}_class_{previous_target_attr_label}_attr_idx_{self.target_attr_idx}.png'  # noqa
                             if print_intermediate_result:
-                                save_image(saved_image,
-                                           f'{save_dir}/{save_name}')
+                                save_image(saved_image, f'{save_dir}/{save_name}')
                             if editing_logger:
-                                editing_logger.info(
-                                    f'{save_name}: {saved_label}, {saved_score}'
-                                )
+                                editing_logger.info(f'{save_name}: {saved_label}, {saved_score}')
 
                         current_stage_images_list = []
                         current_stage_labels_list = []
@@ -612,12 +590,9 @@ class BaseModel():
                         current_stage_images_list.append(edited_image)
                         current_stage_labels_list.append(edited_label)
                         current_stage_scores_list.append(edited_score)
-                        current_stage_target_scores_list.append(
-                            target_attr_score)
-                        current_stage_latent_code_list.append(
-                            sample_latent_code)
-                        current_stage_editing_latent_code_list.append(
-                            edited_latent_code)
+                        current_stage_target_scores_list.append(target_attr_score)
+                        current_stage_latent_code_list.append(sample_latent_code)
+                        current_stage_editing_latent_code_list.append(edited_latent_code)
 
                 previous_target_attr_label = target_attr_label
 
@@ -643,8 +618,7 @@ class BaseModel():
                 saved_label = current_stage_labels_list[max_index]
                 saved_score = current_stage_scores_list[max_index]
                 saved_latent_code = current_stage_latent_code_list[max_index]
-                saved_editing_latent_code = current_stage_editing_latent_code_list[
-                    max_index]
+                saved_editing_latent_code = current_stage_editing_latent_code_list[max_index]
                 save_name = f'{prefix}_{sample_id:03d}_num_edits_{num_edits}_class_{previous_target_attr_label}_attr_idx_{self.target_attr_idx}.png'  # noqa
                 save_image(saved_image, f'{save_dir}/{save_name}')
                 if display_img:
@@ -653,7 +627,6 @@ class BaseModel():
                     plt.axis('off')
                     plt.show()
                 if editing_logger:
-                    editing_logger.info(
-                        f'{save_name}: {saved_label}, {saved_score}')
+                    editing_logger.info(f'{save_name}: {saved_label}, {saved_score}')
 
         return saved_latent_code, saved_editing_latent_code, saved_label, exception_mode
