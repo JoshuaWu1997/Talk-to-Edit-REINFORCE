@@ -154,11 +154,6 @@ def dialog_with_simulator(field_model,
 
         # -------------------- TAKE USER INPUT --------------------
         user_query, score = gen_simulated_query(attribute_dict, tgt_label)
-        feat_distance = ((latent_code - tgt_latent_code) ** 2).mean()
-        dialog_logger.info('Feature Distance:' + str(feat_distance.item()))
-        dialog_logger.info('Score Distance:' + str(score))
-        feat_distances.append(feat_distance)
-        score_distances.append(score)
         # understand user input
         user_labels = encode_request(
             args,
