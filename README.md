@@ -8,19 +8,49 @@ This repository is a reinforcement learning based extension of this paper:
 > Yuming Jiang<sup>∗</sup>, Ziqi Huang<sup>∗</sup>, Xingang Pan, Chen Change Loy, Ziwei Liu<br>
 > IEEE International Conference on Computer Vision (**ICCV**), 2021<br>
 
-[[Paper](https://arxiv.org/abs/2109.04425)]
-[[Project Page](https://www.mmlab-ntu.com/project/talkedit/)]
-[[CelebA-Dialog Dataset](https://mmlab.ie.cuhk.edu.hk/projects/CelebA/CelebA_Dialog.html)]
-[[Poster](https://drive.google.com/file/d/1KaojezBNqDrkwcT0yOkvAgqW1grwUDed/view?usp=sharing)]
-[[Video](https://www.youtube.com/watch?v=ZKMkQhkMXPI)]
+We aggregate our code base into two notebooks:
+1. Editing with simulator (demo/qualitative results): <a href="https://colab.research.google.com/drive/1YfUQVqAf3XD3EECCwuiScVP_TJU9QBih?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="google colab logo"></a>
+2. RL based editing with simulator (training): <a href="https://colab.research.google.com/drive/1lzBaysfO_B9v03xetq1HTKpfQbBKQNXn?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="google colab logo"></a>
 
-You can try our colab demo here. Enjoy!
-1. Editing with simulator: <a href="https://colab.research.google.com/drive/1YfUQVqAf3XD3EECCwuiScVP_TJU9QBih?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="google colab logo"></a>
+## Our Code Structure
+* `utils/dialog_edit_utils.py`:
+  * `EditTracker`: Gaussian Policy + State Tracker
+    * `supervised_loss`: Supervised feature distance loss
+    * `reinforce_loss`: REINFORCE loss
+  * `gen_simulated_query`: User simulator
+  * `dialog_with_simulator`: Interactive simulation environment (demo/test)
+  * `train_with_simulator`: Interactive simulation environment (training)
+* `policy_network.pth`: Our pretrained policy.
 
 ## Qualitative Results
 
-![result](./assets/1024_results_updated.png)
+### Running examples of interactive editing
+edit images for multiple fields
 
+![result](./assets/example_2.png)
+
+
+edit images for multiple degree
+
+![result](./assets/example_3.png)
+
+### Comparison results of baseline and ours
+![result](./assets/examples.png)
+
+## Quantitative Results
+### Feature Preservation
+We shows the quantitative results of the feature distances of multi-round
+interactive image editing. For the baseline method, We observe a trend of increasing feature distance
+between its edited image and the target image. This observation may imply that while the baseline
+method is editing the semantic attribute of the facial image, some other characteristics (e.g. facial
+identity, background, colors, etc.) of the source image are not well preserved. In practice, such
+deviation from the source image can be magnified in longer user sessions since the bias is accumulated
+through multiple rounds.
+
+![result](./assets/q1.png)
+
+### Semantic Attribute Preservation
+![result](./assets/q2.png)
 
 ## CelebA-Dialog Dataset
 
@@ -32,21 +62,9 @@ You can try our colab demo here. Enjoy!
 
 The dataset can be employed as the training and test sets for the following computer vision tasks: fine-grained facial attribute recognition, fine-grained facial manipulation, text-based facial generation and manipulation, face image captioning, and broader natural language based facial recognition and manipulation tasks.
 
+The codebase is maintained by [Junda Wu](https://github.com/JoshuaWu1997).
 
-## Citation
-
-   If you find our repo useful for your research, please consider citing our paper:
-
-   ```bibtex
-   @InProceedings{jiang2021talkedit,
-     author = {Jiang, Yuming and Huang, Ziqi and Pan, Xingang and Loy, Chen Change and Liu, Ziwei},
-     title = {Talk-to-Edit: Fine-Grained Facial Editing via Dialog},
-     booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision},
-     year={2021}
-   }
-   ```
-
-The codebase is maintained by [Yuming Jiang](https://yumingj.github.io/) and [Ziqi Huang](https://ziqihuangg.github.io/).
-
-Part of the code is borrowed from [stylegan2-pytorch](https://github.com/rosinality/stylegan2-pytorch), [IEP](https://github.com/facebookresearch/clevr-iep) and [face-attribute-prediction](https://github.com/d-li14/face-attribute-prediction).
-
+Part of the code is borrowed from [Talk-to-Edit](https://github.com/yumingj/talk-to-edit).
+[[Paper](https://arxiv.org/abs/2109.04425)]
+[[Project Page](https://www.mmlab-ntu.com/project/talkedit/)]
+[[CelebA-Dialog Dataset](https://mmlab.ie.cuhk.edu.hk/projects/CelebA/CelebA_Dialog.html)]
