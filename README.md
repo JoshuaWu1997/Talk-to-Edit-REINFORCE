@@ -8,11 +8,12 @@ This repository is a reinforcement learning based extension of this paper:
 > Yuming Jiang<sup>∗</sup>, Ziqi Huang<sup>∗</sup>, Xingang Pan, Chen Change Loy, Ziwei Liu<br>
 > IEEE International Conference on Computer Vision (**ICCV**), 2021<br>
 
+## Our Code Structure
 We aggregate our code base into two notebooks:
 1. Editing with simulator (demo/qualitative results): <a href="https://colab.research.google.com/drive/1YfUQVqAf3XD3EECCwuiScVP_TJU9QBih?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="google colab logo"></a>
 2. RL based editing with simulator (training): <a href="https://colab.research.google.com/drive/1lzBaysfO_B9v03xetq1HTKpfQbBKQNXn?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="google colab logo"></a>
 
-## Our Code Structure
+The code written as scripts is structured:
 * `utils/dialog_edit_utils.py`:
   * `EditTracker`: Gaussian Policy + State Tracker
     * `supervised_loss`: Supervised feature distance loss
